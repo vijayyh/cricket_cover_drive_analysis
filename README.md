@@ -1,132 +1,135 @@
-# AthleteRise - AI-Powered Cricket Analytics
+# AI-Powered Cricket Analytics
 
-This project builds a Python-based system for real-time cover drive analysis from full cricket videos, performing frame-by-frame pose estimation and outputting an annotated video with live overlays and a final shot evaluation.
+AthleteRise is a Python-based system for real-time cricket shot analysis (currently focused on the cover drive). It processes full videos frame by frame, applies pose estimation, computes biomechanical metrics, and generates annotated videos with actionable feedback.
 
-## Objective
+## Core
 
-Build a Python-based system that processes the entire cricket video in real time (no screenshots/keyframe exports), performs pose estimation frame-by-frame, and outputs an annotated video with live overlays and a final shot evaluation.
+These scripts form the main pipeline of the analysis:
 
-## Video to Analyze
+main.py – Entry point for running the analysis.
 
-YouTube Short: https://youtube.com/shorts/vSX3IRxGnNY
+video_processing.py – Handles input video processing.
 
-## Scope & Requirements (Base)
+pose_estimation.py – Extracts keypoints using MediaPipe/OpenPose.
 
-1.  **Full Video Processing (Real-Time Flow)**
-    *   Download input video and process all frames sequentially (OpenCV).
-    *   Normalize FPS/resolution if needed but preserve real-time or near-real-time flow.
-    *   Output: a single annotated .mp4 (or .avi) saved to `/output/`.
-2.  **Pose Estimation (Per Frame)**
-    *   Use MediaPipe, OpenPose, or similar.
-    *   Extract keypoints each frame for: head, shoulders, elbows, wrists, hips, knees, ankles.
-    *   Gracefully handle missing joints/occlusions.
-3.  **Biomechanical Metrics (Per Frame or Rolling)**
-    Compute and log:
-    *   Front elbow angle (shoulder–elbow–wrist)
-    *   Spine lean (hip–shoulder line vs. vertical)
-    *   Head-over-knee vertical alignment (projected distance)
-    *   Front foot direction (toe/foot angle vs. crease or video x-axis surrogate)
-    (Bat tracking is not required in base scope.)
-4.  **Live Overlays in the Output Video**
-    *   Draw pose skeleton on each frame.
-    *   Display real-time metric readouts (e.g., “Elbow: 115°”).
-    *   Short feedback cues when thresholds are breached:
-        *   ✅ “Good elbow elevation”
-        *   ❌ “Head not over front knee”
-5.  **Final Shot Evaluation (End of Video)**
-    *   Compute and save a summary score (1–10) for:
-        *   Footwork
-        *   Head Position
-        *   Swing Control
-        *   Balance
-        *   Follow-through
-    *   Include 1–2 lines of actionable feedback per category.
-    *   Save summary to `evaluation.json` or `evaluation.txt`.
+biomechanical_metrics.py – Computes elbow angle, spine lean, etc.
+
+overlay_utils.py – Adds overlays (skeleton + live metrics).
+
+evaluation.py – Final shot evaluation logic.
+
+config.py – Central configuration file.
+
+
+## Scope & Requirements
+
+### Base Requirements
+
+*  These provide useful additions on top of the core pipeline:
+*   Video input/output management.
+*   Compute and display at least three biomechanical metrics in real-time.
+*   Simple plotting utilities (e.g., elbow angle over time).
+*   Report generation (report_template.html).
+*   Configurable parameters for experiments.
+
+### Bonus Features (Advanced Extensions)
+
+This project also aims to implement the following advanced features:
+
+*   **These are experimental/advanced modules to extend the analysis:
+*   **streamlit_app.py – Web interface for interactive uploads.**
+*   skill_grade_prediction.py – Predict player skill level.
+*   temporal_smoothness.py – Smooth noisy keypoints.
+*   report_export.py / new_report_export.py – Export reports in custom formats.
+*   robustness_ux.py – Improve usability and error handling.
+*   performance_target.py – Compare metrics with expert benchmarks.
+*  bat_tracking.py – Track bat position..
 
 ## Deliverables
 
-*   `cover_drive_analysis_realtime.py` (main script - likely `src/main.py`)
-*   `/output/`
-    *   `annotated_video.mp4` (with overlays, full-length)
-    *   `evaluation.json` (or `.txt`) with category scores & comments
-    *   `elbow_angle_plot.png` (example matplotlib graph)
-*   `requirements.txt` (or `environment.yml`)
-*   `README.md` (this file)
-    *   Setup & run instructions
-    *   Notes on assumptions/limitations
+*   `app.py`: The Streamlit web app.
+*   `cover_drive_analysis_realtime.py`: The main Python script for the analysis.
+*   `/output/`: A directory containing the output files:
+    *   `annotated_video.mp4`: The annotated video with overlays.
+    *   `evaluation.json`: The final evaluation report.
+*   `requirements.txt`: A list of required Python packages.
+*   `README.md`: This file.
 
-## Setup
+## Setup & Run Instructions
 
-1.  **Clone the repository:**
+1. **Set up Python 3.10 environment (recommended):**
+   This project was developed and tested on **Python 3.10**.  
+   It is highly recommended to use a virtual environment with Python 3.10 to avoid compatibility issues.  
+
+   ```bash
+   # If you use conda
+   conda create -n cricket_analytics python=3.10
+   conda activate cricket_analytics
+
+   # If you use venv
+   python3.10 -m venv cricket_analytics
+   source cricket_analytics/bin/activate  # On Windows: cricket_analytics\Scripts\activate
+   
+2.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/AthleteRise.git
-    cd AthleteRise
+       [https://github.com/vijayyh/cricket_cover_drive_analysis.git]
     ```
-
-2.  **Install dependencies:**
+3.  **Install the dependencies:**
     ```bash
     pip install -r requirements.txt
     ```
-
-## Usage
-There are two ways to run the analysis:
-
-### Option 1: Run via the Command Line (main.py)
-
-1.  **Prepare the script:** The `src/main.py` script is configured to run directly from the command line. It will download the video from the URL specified in `config.py` and perform the analysis. You can edit the `if __name__ == '__main__':` block in `src/main.py` to analyze a local file instead.
-
-2.  **Run the analysis:** From the project's root directory, execute the following command:
+4.  **Run the Streamlit app:**
     ```bash
-    python src/main.py
+    streamlit run app.py
     ```
-    The script will download the video, process it, and save the output files to the `/output/` directory.
-
-
-### Option 2: Run the Streamlit Web Application
-The web app provides an interactive interface to upload your own videos.
+    OR 
     ```bash
-    streamlit run bonus_features/streamlit_app.py
+    python cover_drive_analysis_realtime.py
     ```
+5.  **Open your web browser** and go to the URL provided by Streamlit.
+6.  **Upload a video** of a cover drive and wait for the analysis to complete both are available in the repository.
+7.  **View the results** and download the annotated video and evaluation report.
 
-## Output
+## Example
 
-*   An annotated video (`annotated_video.mp4` or `.avi`) will be saved to the `/output/` directory. This video will include pose overlays and real-time metric readouts.
-*   A summary evaluation file (`evaluation.json` or `evaluation.txt`) with category scores and comments will be saved to the `/output/` directory.
-*   A graph visualizing biomechanical metrics (e.g., `elbow_angle_plot.png` for elbow angle over time) generated using Matplotlib will be saved in the `/output/` directory.
+Below is a real example from this repo. You can play the input and annotated GIFs right here, and open the reports with one click.
 
-## Project Structure
+---
 
-```
-AthleteRise/
-├── src/
-│   ├── main.py
-│   ├── video_processing.py
-│   ├── pose_estimation.py
-│   ├── biomechanical_metrics.py
-│   ├── overlay_utils.py
-│   └── evaluation.py
-├── bonus_features/
-│   ├── phase_segmentation.py
-│   ├── contact_detection.py
-│   ├── temporal_smoothness.py
-│   ├── performance_target.py
-│   ├── reference_comparison.py
-│   ├── bat_tracking.py
-│   ├── skill_grade_prediction.py
-│   ├── streamlit_app.py
-│   ├── robustness_ux.py
-│   └── report_export.py
-├── output/
-├── GEMINI.md
-├── README.md
-└── requirements.txt
-```
+### Input Videos
 
-## Notes on Assumptions/Limitations
+### Prithvi Shaw Cover Drive
+![Prithvi Shaw](Example_input_videos/prithvishaw.gif)
 
-*   The system assumes the input video is a cricket video, specifically for cover drive analysis.
-*   Bat tracking is not required in the base scope.
-*   The system handles missing joint detections/occlusions gracefully.
-*   The system aims for real-time or near-real-time processing.
-*   The analysis is based on a single video and may not be representative of a player's overall skill.
-*   The evaluation metrics and scoring are based on general cricketing principles and can be customized.
+### Rohit Sharma Cover Drive
+![Rohit Sharma](Example_input_videos/rohitsharma.gif)
+---
+
+### Output: Annotated Videos
+
+
+### Output: Temporal Smoothness
+
+<img src="bonus_features/output/elbow_angle_plot.png" alt="App Screenshot" width="600">
+
+---
+
+
+## Assumptions & Limitations
+
+Focused on cover drive analysis (extendable to other shots).
+
+Works best with clear, single-player cricket footage.
+
+Bat tracking and ball contact detection are optional bonus features.
+
+Evaluation metrics are based on general cricketing principles.
+
+## Tech Stack
+
+*   **Python:** The core programming language.
+*   **OpenCV:** For video processing and analysis.
+*   **MediaPipe:** For pose estimation.
+*   **Streamlit:** For the web-based user interface.
+*   **scikit-learn:** For machine learning tasks (e.g., skill grade prediction).
+*   **NumPy:** For numerical computations.
