@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cricket Analysis Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        h2 { color: #555; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 20px; }
+        .section { margin-bottom: 15px; }
+        .score { font-weight: bold; color: #007bff; }
+        .feedback { font-style: italic; color: #666; }
+        img { max-width: 100%; height: auto; margin-top: 10px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>Cricket Shot Analysis Report</h1>
+
+    <h2>Shot Evaluation</h2>
+    {% for category, data in evaluation.items() %}
+        <div class="section">
+            <strong>{{ category }}:</strong>
+            {% if category != "Reference Comparison" %}
+                <span class="score">Score - {{ data['score'] | round(2) }}/10</span>
+            {% endif %}
+            <p class="feedback">Feedback - {{ data['feedback'] }}</p>
+        </div>
+    {% endfor %}
+
+    {% if evaluation["Reference Comparison"] is defined %}
+        <h2>Reference Comparison Feedback</h2>
+        <div class="section">
+            {% for fb in evaluation["Reference Comparison"]["feedback"] %}
+                <p class="feedback">- {{ fb }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if smoothness_plot %}
+        <h2>Temporal Smoothness (Elbow Angle)</h2>
+        <img src="{{ smoothness_plot }}" alt="Elbow Angle Plot">
+    {% endif %}
+
+</body>
+</html>

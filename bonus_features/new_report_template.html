@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cricket Analysis Report</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            text-align: center;
+            color: #0056b3;
+        }
+        .video-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        video {
+            width: 100%;
+            max-width: 600px;
+            border-radius: 8px;
+        }
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .metrics-table th, .metrics-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .metrics-table th {
+            background-color: #e9e9e9;
+            color: #555;
+        }
+        .metrics-table td {
+            color: #007bff; /* Different font color for data values */
+            font-weight: bold;
+        }
+        .graph-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .graph-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+        }
+        .skill-grade {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #28a745; /* Green color for skill grade */
+        }
+        .feedback-section h3 {
+            color: #0056b3;
+        }
+        .feedback-section ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .feedback-section li {
+            background-color: #f9f9f9;
+            margin-bottom: 8px;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cricket Analysis Report</h1>
+
+        <div class="video-container">
+            <h2>Annotated Video</h2>
+            <video controls>
+                <source src="{{ annotated_video_path }}" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <h2>Biomechanical Metrics</h2>
+        <table class="metrics-table">
+            <tr>
+                <th>Metric</th>
+                <th>Mean</th>
+                <th>Min</th>
+                <th>Max</th>
+            </tr>
+            {% for metric_name, mean_value in metrics_summary.get('mean', {}).items() %}
+            <tr>
+                <td>{{ metric_name }}</td>
+                <td>{{ "%.2f"|format(mean_value) }}</td>
+                <td>{{ "%.2f"|format(metrics_summary.get('min', {}).get(metric_name, 0)) }}</td>
+                <td>{{ "%.2f"|format(metrics_summary.get('max', {}).get(metric_name, 0)) }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <div class="graph-container">
+            <h2>Elbow Angle Graph</h2>
+            <img src="{{ elbow_angle_plot_base64 }}" alt="Elbow Angle Graph">
+        </div>
+
+        <h2>Skill Grade</h2>
+        <div class="skill-grade">
+            <p>Your predicted skill grade is: <strong>{{ skill_grade }}</strong></p>
+        </div>
+        <div class="feedback-section">
+            <h3>Feedback:</h3>
+            <ul>
+                {% for category, data in evaluation_data.items() %}
+                    <li><strong>{{ category }}:</strong> {{ data['feedback'] }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
