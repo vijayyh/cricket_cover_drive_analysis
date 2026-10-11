@@ -91,7 +91,7 @@ python train_shot_classifier.py
 
 **2. Run the API** (from the project root)
 ```bash
-uvicorn backend.app:app --port 8000
+uvicorn backend.app:app --host 127.0.0.1 --port 8000
 ```
 
 **3. Run the UI** (in a second terminal)
@@ -100,10 +100,10 @@ cd frontend
 npm install
 npm run dev
 ```
-Open http://localhost:5173. The UI proxies `/api` to the backend.
+Open http://127.0.0.1:5173. The UI proxies `/api` to the backend.
 
 *Single-server option:* `cd frontend && npm run build`, then just run uvicorn and open
-http://localhost:8000. FastAPI serves the built UI.
+http://127.0.0.1:8000. FastAPI serves the built UI.
 
 **Command line:**
 ```bash
