@@ -1,242 +1,239 @@
+"""
+main.py — analyse a cricket shot video or photo.
+
+    python main.py --video path/to/clip.mp4
+    python main.py --image path/to/photo.jpg
+    python main.py                       # every video/photo in test_folder/
+
+Pipeline (video)
+  1. MediaPipe pose tracking on every frame
+  2. Shot type: CNN + pose fusion on the frames around the swing   (src/shot_recognizer.py)
+  3. Technique: measured angles vs shot-specific coaching targets   (src/technique.py)
+  4. Annotated video with skeleton, shot label and impact marker
+Results are written to output/results/<id>.json and returned as a dict.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
 import os
 import sys
-import cv2
 import time
-import json
-import argparse
+import uuid
+
+import cv2
 import numpy as np
-import mediapipe as mp
-
-try:
-    mp_pose = mp.solutions.pose
-except:
-    mp_pose = None
-
-from src.frame_extractor import extract_frames
-from src.shot_classifier import ShotClassifier
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import src.config as config
-from src.video_processing import setup_video_capture, setup_video_writer
+from src.overlay_utils import draw_hud, draw_progress, draw_skeleton
 from src.pose_estimation import PoseEstimator
-from src.biomechanical_metrics import calculate_metrics
-from src.overlay_utils import draw_pose_landmarks, display_metrics_on_frame
-from src.evaluation import save_evaluation
-from src.dataset_utils import export_features_from_video
+from src.shot_recognizer import FramePose, ShotRecognizer, detect_pose_static, segments
+from src.technique import assess
+from src.video_processing import setup_video_capture, setup_video_writer
 
-_ML_MODEL_PATH = os.path.join("models", "best_model.pkl")
-_predictor = None
+_recognizer = None
 
 
-def _get_predictor():
-    global _predictor
-    if _predictor is None:
-        from src.ml_model import MLPredictor
-        try:
-            _predictor = MLPredictor(model_path=_ML_MODEL_PATH)
-            print(f"[main] ML model loaded: {_predictor._model_name}")
-        except Exception as e:
-            print(f"[main] ML model not available: {e}")
-            _predictor = None
-    return _predictor
+def get_recognizer() -> ShotRecognizer:
+    global _recognizer
+    if _recognizer is None:
+        _recognizer = ShotRecognizer(config.MODEL_DIR)
+    return _recognizer
 
 
-_shot_classifier = None
-
-def _get_shot_classifier():
-    global _shot_classifier
-    if _shot_classifier is None:
-        try:
-            from src.shot_landmark_classifier import ShotLandmarkClassifier
-            _shot_classifier = ShotLandmarkClassifier()
-            print("[main] Landmark shot classifier loaded")
-        except Exception as e:
-            print(f"[main] Shot classifier not available: {e}")
-            _shot_classifier = None
-    return _shot_classifier
+def analyze(path: str, analysis_id: str | None = None, source_name: str | None = None) -> dict:
+    ext = os.path.splitext(path)[1].lower()
+    if ext in config.IMAGE_EXTS:
+        return analyze_image(path, analysis_id, source_name)
+    return analyze_video(path, analysis_id, source_name)
 
 
-def _metrics_to_score_lists(all_metrics):
-    """
-    Convert list of per-frame metric dicts into the five score-list format
-    that save_evaluation() expects (each value in [0, 1]).
-
-    Mapping:
-      footwork_scores       ← foot_direction  (ideal ≈ 82–98°, centred on 90)
-      head_position_scores  ← head_over_knee  (lower is better; ideal < 0.06)
-      swing_control_scores  ← elbow_angle     (ideal ≈ 100–155°)
-      balance_scores        ← spine_lean      (ideal ≈ 82–98°, centred on 90)
-      follow_through_scores ← elbow_angle     (high elbow = good follow-through)
-    """
-    footwork, head_pos, swing, balance, follow = [], [], [], [], []
-
-    for m in all_metrics:
-        if m is None:
-            continue
-
-        ea  = float(m.get("elbow_angle",     90))
-        sl  = float(m.get("spine_lean",       80))
-        hok = float(m.get("head_over_knee",   0.15))
-        fd  = float(m.get("foot_direction",   70))
-
-        # Foot direction: score 1.0 when fd=90, falls off symmetrically
-        footwork.append(max(0.0, 1.0 - abs(fd - 90) / 55.0))
-
-        # Head over knee: score 1.0 at 0.0 offset, 0.0 at 0.30+
-        head_pos.append(max(0.0, 1.0 - hok / 0.30))
-
-        # Elbow angle: score 1.0 in [100, 155], ramps from 40–100 and 155–180
-        if 100 <= ea <= 155:
-            swing.append(1.0)
-        elif ea < 100:
-            swing.append(max(0.0, (ea - 40) / 60.0))
-        else:
-            swing.append(max(0.0, (180 - ea) / 25.0))
-
-        # Spine lean: similar to foot direction, centred on 90
-        balance.append(max(0.0, 1.0 - abs(sl - 90) / 45.0))
-
-        # Follow-through proxied by elbow height in follow-through phase
-        # (same normalisation as swing but we keep it as a separate metric)
-        follow.append(max(0.0, min(1.0, (ea - 60) / 95.0)))
-
-    return footwork, head_pos, swing, balance, follow
-
-
-def analyze_video(video_path, export_features=False):
-    pose_estimator = PoseEstimator()
-
-    cap, width, height, fps = setup_video_capture(video_path)
-    if cap is None:
-        return None
-
-    filename  = os.path.basename(video_path)
-    name      = os.path.splitext(filename)[0]
-    output_file = os.path.join(config.OUTPUT_DIR, f"{name}_annotated.mp4")
-    out = setup_video_writer(output_file, width, height, fps)
-
-    all_metrics = []
-    frame_count = 0
-    start_time  = time.time()
-
-    _raw_results = []          # ← ADD THIS LINE before the while loop
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame_count += 1
-        image, results = pose_estimator.process_frame(frame)
-        _raw_results.append(results)
-
-        try:
-            landmarks = pose_estimator.get_landmarks(results)
-            if landmarks:
-                metrics = (calculate_metrics(landmarks, mp_pose)
-                           if mp_pose else calculate_metrics(landmarks, None))
-                if metrics:
-                    all_metrics.append(metrics)
-                    # ── Overlay metrics text ─────────────────────────────
-                    display_metrics_on_frame(image, metrics)
-
-            # ── Draw skeleton regardless of whether metrics were computed ─
-            if results and hasattr(results, "pose_landmarks") and results.pose_landmarks:
-                draw_pose_landmarks(image, results)
-
-        except Exception as e:
-            print(f"[main] Frame error: {e}")
-
-        out.write(image)
-
-    cap.release()
-    out.release()
-
-    elapsed = time.time() - start_time
-    avg_fps = frame_count / elapsed if elapsed > 0 else 0
-    print(f"[main] Frames processed: {frame_count}  |  Avg FPS: {avg_fps:.2f}")
-    print(f"[main] Annotated video saved -> {output_file}")
-
-    # ── BUG FIX: pass actual metric scores, not empty lists ──────────────────
-    if all_metrics:
-        footwork, head_pos, swing, balance, follow = _metrics_to_score_lists(all_metrics)
-        save_evaluation(footwork, head_pos, swing, balance, follow)
-    else:
-        save_evaluation([], [], [], [], [])
-
-    # ── ML quality prediction ─────────────────────────────────────────────────
-    predictor = _get_predictor()
-    ml_result = (predictor.predict_aggregated(all_metrics)
-                 if predictor and all_metrics else None)
-    
-    if ml_result:
-        import random
-        ml_result["label"] = random.choice(["Good", "Excellent"])
-        ml_result["confidence"] = round(random.uniform(0.88, 0.99), 3)
-
-    # ── Shot-type classification ───────────────────────────────────────────────
-    shot_result = None
-    shot_model  = _get_shot_classifier()
-    if shot_model:
-        shot_result = shot_model.predict_from_landmarks(
-            [pose_estimator.get_landmarks(r) for r in _raw_results]
-        )
-
-    result = {
-        "quality":          ml_result,   # label, confidence, probabilities, model_used
-        "shot_type":        shot_result, # shot_type, confidence
-        "annotated_video":  output_file, # ← full path to the landmark-annotated video
-        "frame_count":      frame_count,
-        "avg_fps":          round(avg_fps, 2),
-    }
-
-    # ── BUG FIX: write full result JSON so the backend / website can read it ──
-    result_json_path = os.path.join(config.OUTPUT_DIR, f"{name}_result.json")
-    _safe_json = {k: v for k, v in result.items()
-                  if v is not None and k != "annotated_video"}
-    _safe_json["annotated_video_filename"] = os.path.basename(output_file)
-    with open(result_json_path, "w") as f:
-        json.dump(_safe_json, f, indent=4)
-    print(f"[main] Result JSON saved -> {result_json_path}")
-
+def _save(result: dict) -> dict:
+    os.makedirs(config.RESULTS_DIR, exist_ok=True)
+    with open(os.path.join(config.RESULTS_DIR, f"{result['id']}.json"), "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2)
     return result
 
 
-def _parse_args():
-    p = argparse.ArgumentParser()
-    p.add_argument("--video", type=str, default=None)
-    return p.parse_args()
+def _thumbnail(frame):
+    """Tiny grayscale frame + histogram for scene-cut detection."""
+    g = cv2.cvtColor(cv2.resize(frame, (64, 36), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY)
+    h = cv2.calcHist([g], [0], None, [32], [0, 256])
+    cv2.normalize(h, h)
+    return g, h
+
+
+def _is_cut(a, b) -> bool:
+    """A camera cut changes both the brightness histogram and the pixels at once."""
+    hist_d = cv2.compareHist(a[1], b[1], cv2.HISTCMP_BHATTACHARYYA)
+    pix_d = float(np.mean(cv2.absdiff(a[0], b[0]))) / 255
+    return hist_d > 0.5 or (hist_d > 0.2 and pix_d > 0.1)
+
+
+def _subject_jumped(prev_lm, lm) -> bool:
+    """The tracker hopped to a different person: hips move > 1.5 torso lengths in one frame."""
+    if prev_lm is None or lm is None:
+        return False
+    hip_a = (prev_lm[23, :2] + prev_lm[24, :2]) / 2
+    hip_b = (lm[23, :2] + lm[24, :2]) / 2
+    torso = np.linalg.norm((prev_lm[11, :2] + prev_lm[12, :2]) / 2 - hip_a) + 1e-6
+    return float(np.linalg.norm(hip_b - hip_a)) > 1.5 * torso
+
+
+def analyze_video(path: str, analysis_id: str | None = None, source_name: str | None = None) -> dict:
+    analysis_id = analysis_id or uuid.uuid4().hex[:12]
+    t0 = time.time()
+    cap, W, H, fps = setup_video_capture(path)
+    if cap is None:
+        raise ValueError("Could not open the video file")
+
+    # ── Pass 1: pose tracking + scene-cut detection ──────────────────────────
+    max_frames = int(config.MAX_VIDEO_SECONDS * fps)
+    estimator = PoseEstimator()
+    poses: list[FramePose] = []
+    prev_thumb = None
+    while len(poses) < max_frames:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        thumb = _thumbnail(frame)
+        img_lm, world_lm = estimator.process(frame)
+        cut = prev_thumb is not None and _is_cut(prev_thumb, thumb)
+        cut = cut or (bool(poses) and _subject_jumped(poses[-1].img_lm, img_lm))
+        poses.append(FramePose(len(poses), img_lm, world_lm, {"cut": cut}))
+        prev_thumb = thumb
+    cap.release()
+    estimator.close()
+    n = len(poses)
+    if n == 0:
+        raise ValueError("The video has no readable frames")
+
+    # ── Shot type + technique ────────────────────────────────────────────────
+    shot = get_recognizer().predict_video(path, poses, fps)
+    timeline = shot.pop("timeline", [])
+    key = shot.get("key_frame")
+    seg = segments(poses)
+    # Only measure technique inside the camera shot that contains the swing.
+    tech_poses = [p.img_lm if key is None or seg[i] == seg[key] else None for i, p in enumerate(poses)]
+    technique = assess(shot["shot_type"], tech_poses, key, fps)
+    impact = technique["impact_frame"] if technique else key
+
+    # ── Pass 2: annotated video ──────────────────────────────────────────────
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+    video_name, key_name = f"{analysis_id}_annotated.mp4", f"{analysis_id}_key.jpg"
+    out = setup_video_writer(os.path.join(config.OUTPUT_DIR, video_name), W, H, fps)
+    cap = cv2.VideoCapture(path)
+    label = f"{shot['shot_type'].upper()}  {shot['confidence']:.0%}"
+    near_impact = max(1, int(0.1 * fps))
+    for i in range(n):
+        ok, frame = cap.read()
+        if not ok:
+            break
+        frame = draw_skeleton(frame, poses[i].img_lm)
+        is_impact = impact is not None and abs(i - impact) <= near_impact
+        frame = draw_hud(frame, label, "IMPACT" if is_impact else "CRICAI", is_impact)
+        frame = draw_progress(frame, (i + 1) / n, impact / n if impact is not None else None)
+        if i == impact or (impact is None and i == n // 2):
+            cv2.imwrite(os.path.join(config.OUTPUT_DIR, key_name), frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        out.write(frame)
+    cap.release()
+    out.release()
+
+    elapsed = time.time() - t0
+    detected = sum(p.img_lm is not None for p in poses)
+    print(f"[main] {n} frames | pose on {detected} | {elapsed:.1f}s | "
+          f"{shot['shot_type']} ({shot['confidence']:.0%})")
+
+    return _save({
+        "id": analysis_id,
+        "kind": "video",
+        "source_name": source_name or os.path.basename(path),
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "shot": shot,
+        "timeline": timeline,
+        "technique": technique,
+        "media": {
+            "annotated": video_name, "key_frame": key_name,
+            "width": W, "height": H, "fps": round(fps, 2), "frames": n,
+            "duration": round(n / fps, 2),
+        },
+        "stats": {
+            "pose_detected_ratio": round(detected / n, 3),
+            "processing_seconds": round(elapsed, 2),
+        },
+    })
+
+
+def analyze_image(path: str, analysis_id: str | None = None, source_name: str | None = None) -> dict:
+    analysis_id = analysis_id or uuid.uuid4().hex[:12]
+    t0 = time.time()
+    img = cv2.imread(path)
+    if img is None:
+        raise ValueError("Could not read the image file")
+    if max(img.shape[:2]) > 1600:
+        s = 1600 / max(img.shape[:2])
+        img = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+    H, W = img.shape[:2]
+
+    pose = detect_pose_static(img)
+    shot = get_recognizer().predict_image(img, pose)
+    lm = pose[0] if pose else None
+    technique = assess(shot["shot_type"], [lm], 0, 1.0) if lm is not None else None
+
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+    name = f"{analysis_id}_annotated.jpg"
+    annotated = draw_skeleton(img, lm) if lm is not None else img.copy()
+    annotated = draw_hud(annotated, f"{shot['shot_type'].upper()}  {shot['confidence']:.0%}", "CRICAI")
+    cv2.imwrite(os.path.join(config.OUTPUT_DIR, name), annotated, [cv2.IMWRITE_JPEG_QUALITY, 90])
+
+    elapsed = time.time() - t0
+    print(f"[main] image | pose {'yes' if lm is not None else 'no'} | {elapsed:.1f}s | "
+          f"{shot['shot_type']} ({shot['confidence']:.0%})")
+    return _save({
+        "id": analysis_id,
+        "kind": "image",
+        "source_name": source_name or os.path.basename(path),
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "shot": shot,
+        "timeline": [],
+        "technique": technique,
+        "media": {"annotated": name, "key_frame": name, "width": W, "height": H,
+                  "fps": 0, "frames": 1, "duration": 0},
+        "stats": {"pose_detected_ratio": 1.0 if lm is not None else 0.0,
+                  "processing_seconds": round(elapsed, 2)},
+    })
+
+
+def _print_result(r: dict):
+    s = r["shot"]
+    probs = ", ".join(f"{k} {v:.0%}" for k, v in sorted(s["all_probabilities"].items(), key=lambda kv: -kv[1]))
+    print(f"  Shot      : {s['shot_type']}  ({s['confidence']:.1%}{', LOW CONFIDENCE' if s['low_confidence'] else ''})")
+    print(f"  All       : {probs}")
+    t = r.get("technique")
+    if t:
+        print(f"  Technique : {t['overall']}/10 ({t['grade']})")
+        for a in t["aspects"]:
+            print(f"     {a['aspect']:<15} {a['score']:>4}/10  {a['measured']}")
+    print(f"  Output    : {os.path.join(config.OUTPUT_DIR, r['media']['annotated'])}")
 
 
 if __name__ == "__main__":
-    args = _parse_args()
+    ap = argparse.ArgumentParser(description="Cricket shot analysis")
+    ap.add_argument("--video", type=str)
+    ap.add_argument("--image", type=str)
+    args = ap.parse_args()
 
-    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-
-    if args.video:
-        video_paths = [args.video]
+    if args.video or args.image:
+        targets = [args.video or args.image]
     else:
-        test_folder = os.path.join(os.getcwd(), "test_folder")
-        video_paths = [os.path.join(test_folder, f) for f in os.listdir(test_folder)]
+        folder = os.path.join(config.ROOT, "test_folder")
+        exts = config.VIDEO_EXTS | config.IMAGE_EXTS
+        targets = [os.path.join(folder, f) for f in sorted(os.listdir(folder))
+                   if os.path.splitext(f)[1].lower() in exts]
 
-    for video_path in video_paths:
-        print(f"\n[main] Processing: {os.path.basename(video_path)}")
-        result = analyze_video(video_path)
-
-        if result:
-            quality = result.get("quality")
-            if quality:
-                print(f"[main] Shot quality : {quality['label']} | "
-                      f"confidence={quality['confidence']:.2%} | "
-                      f"model={quality['model_used']}")
-                print(f"[main] Probabilities: {quality.get('probabilities', {})}")
-
-            shot = result.get("shot_type")
-            if shot:
-                print(f"[main] Shot type    : {shot['shot_type']} | "
-                      f"confidence={shot['confidence']:.2%}")
-
-            print(f"[main] Annotated video -> {result['annotated_video']}")
-
-        print(f"[main] Finished: {os.path.basename(video_path)}")
+    for t in targets:
+        print(f"\n[main] Analysing {os.path.basename(t)}")
+        _print_result(analyze(t))

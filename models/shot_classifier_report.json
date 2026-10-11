@@ -1,0 +1,220 @@
+{
+  "dataset": {
+    "classes": [
+      "Cut Shot",
+      "Cover Drive",
+      "Straight Drive",
+      "Pull Shot",
+      "Leg Glance"
+    ],
+    "original_photos": 500,
+    "source_clips": 284,
+    "images_including_augmented_copies": 3000,
+    "pose_detected_fraction": 0.678
+  },
+  "protocol": "Source-clip grouped split: near-identical frames from the same clip, and every augmented copy, stay on the same side of the split. CNN: fold 0 of a 5-fold StratifiedGroupKFold held out; pose model: full grouped 5-fold CV. Accuracy reported on the unaugmented ('main') holdout photos; fusion weight tuned on the augmented holdout copies.",
+  "baseline_previous_landmark_model": "≈30% on real photos (it was trained on synthetic numbers)",
+  "pose_model_cv_accuracy": {
+    "logreg": 0.7479,
+    "svm": 0.789,
+    "extratrees": 0.7507,
+    "hgb": 0.7753
+  },
+  "pose_model_selected": "svm",
+  "holdout": {
+    "cnn_only": {
+      "accuracy": 0.73,
+      "n": 100,
+      "per_class_f1": {
+        "Cut Shot": 0.485,
+        "Cover Drive": 0.895,
+        "Straight Drive": 0.769,
+        "Pull Shot": 0.68,
+        "Leg Glance": 0.8
+      },
+      "confusion_matrix": [
+        [
+          8,
+          0,
+          0,
+          12,
+          0
+        ],
+        [
+          0,
+          17,
+          2,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          15,
+          1,
+          3
+        ],
+        [
+          3,
+          0,
+          0,
+          17,
+          0
+        ],
+        [
+          2,
+          0,
+          2,
+          0,
+          16
+        ]
+      ]
+    },
+    "pose_only_on_detected": {
+      "accuracy": 0.8077,
+      "n": 78,
+      "per_class_f1": {
+        "Cut Shot": 0.882,
+        "Cover Drive": 0.812,
+        "Straight Drive": 0.476,
+        "Pull Shot": 0.889,
+        "Leg Glance": 0.857
+      },
+      "confusion_matrix": [
+        [
+          15,
+          0,
+          0,
+          2,
+          0
+        ],
+        [
+          1,
+          13,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          4,
+          5,
+          1,
+          5
+        ],
+        [
+          0,
+          0,
+          0,
+          12,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          18
+        ]
+      ]
+    },
+    "fused": {
+      "accuracy": 0.84,
+      "n": 100,
+      "per_class_f1": {
+        "Cut Shot": 0.833,
+        "Cover Drive": 0.85,
+        "Straight Drive": 0.765,
+        "Pull Shot": 0.851,
+        "Leg Glance": 0.884
+      },
+      "confusion_matrix": [
+        [
+          15,
+          0,
+          0,
+          5,
+          0
+        ],
+        [
+          1,
+          17,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          2,
+          13,
+          2,
+          3
+        ],
+        [
+          0,
+          0,
+          0,
+          20,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          19
+        ]
+      ]
+    },
+    "fused_all_augmented_copies": {
+      "accuracy": 0.7817,
+      "n": 600,
+      "per_class_f1": {
+        "Cut Shot": 0.769,
+        "Cover Drive": 0.798,
+        "Straight Drive": 0.701,
+        "Pull Shot": 0.767,
+        "Leg Glance": 0.857
+      },
+      "confusion_matrix": [
+        [
+          85,
+          2,
+          2,
+          31,
+          0
+        ],
+        [
+          4,
+          99,
+          9,
+          2,
+          6
+        ],
+        [
+          0,
+          20,
+          75,
+          5,
+          20
+        ],
+        [
+          12,
+          3,
+          4,
+          99,
+          2
+        ],
+        [
+          0,
+          4,
+          4,
+          1,
+          111
+        ]
+      ]
+    }
+  },
+  "fusion_pose_weight": 0.6,
+  "generated": "2026-10-11 12:29"
+}

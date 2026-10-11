@@ -1,17 +1,5 @@
 import cv2
-import os
-import yt_dlp
 
-def download_video(url, output_path):
-    if os.path.exists(output_path):
-        print("Video already exists.")
-        return
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': output_path,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
 
 def setup_video_capture(video_path):
     cap = cv2.VideoCapture(video_path)
@@ -21,9 +9,15 @@ def setup_video_capture(video_path):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps != fps or fps > 240:     # GIFs / broken headers
+        fps = 25.0
     return cap, width, height, fps
 
+
 def setup_video_writer(output_path, width, height, fps):
-    fourcc = cv2.VideoWriter_fourcc(*'avc1') # Use H.264 codec for better browser compatibility
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    return out
+    """H.264 so browsers can play the result; falls back to MPEG-4 Part 2."""
+    for code in ("avc1", "H264", "mp4v"):
+        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*code), fps, (width, height))
+        if out.isOpened():
+            return out
+    raise RuntimeError("No usable video codec found for the annotated output")

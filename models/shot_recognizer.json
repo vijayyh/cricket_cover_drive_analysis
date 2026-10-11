@@ -1,0 +1,11 @@
+{
+  "classes": [
+    "Cut Shot",
+    "Cover Drive",
+    "Straight Drive",
+    "Pull Shot",
+    "Leg Glance"
+  ],
+  "pose_weight": 0.6,
+  "holdout_accuracy": 0.84
+}

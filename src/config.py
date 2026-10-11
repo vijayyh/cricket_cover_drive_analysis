@@ -1,30 +1,21 @@
-# config.py
+# config.py — paths are resolved from the project root so every entry point
+# (main.py, backend/app.py, training scripts) works regardless of the CWD.
+import os
 
-VIDEO_URL = "https://youtube.com/shorts/vSX3IRxGnNY"
-OUTPUT_DIR = "output"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_DIR = os.path.join(ROOT, "output")
+RESULTS_DIR = os.path.join(OUTPUT_DIR, "results")
+UPLOAD_DIR = os.path.join(ROOT, "uploads")
+MODEL_DIR = os.path.join(ROOT, "models")
+REPORT_PATH = os.path.join(MODEL_DIR, "shot_classifier_report.json")
 
-# MediaPipe Pose Estimation
+# MediaPipe Pose (video tracking mode)
 MIN_DETECTION_CONFIDENCE = 0.5
 MIN_TRACKING_CONFIDENCE = 0.5
+POSE_MODEL_COMPLEXITY = 1
 
-# Biomechanical Metrics Thresholds (example values)
-ELBOW_ANGLE_GOOD_THRESHOLD = (90, 180) # Changed to a range
-HEAD_OVER_KNEE_GOOD_THRESHOLD = 0.1
-FOOT_DIRECTION_GOOD_RANGE = (80, 100)
-SPINE_LEAN_GOOD_RANGE = (80, 100)
+# Longest clip we analyse; longer uploads are trimmed to this many seconds.
+MAX_VIDEO_SECONDS = 30
 
-# Phase Segmentation Thresholds (example values)
-HIP_VELOCITY_THRESHOLD = 0.02
-ARM_VELOCITY_THRESHOLD = 0.03
-IMPACT_WRIST_VELOCITY_THRESHOLD = 0.05
-
-# Contact Detection Thresholds
-CONTACT_WRIST_VELOCITY_THRESHOLD = 0.05
-
-# Bat Tracking Thresholds (example values)
-BAT_MIN_AREA = 100
-BAT_ASPECT_RATIO_THRESHOLD = 3
-
-# Skill Grade Thresholds
-ADVANCED_SCORE = 8
-INTERMEDIATE_SCORE = 5
+VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".gif"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
