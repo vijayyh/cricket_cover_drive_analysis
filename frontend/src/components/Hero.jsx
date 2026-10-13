@@ -1,6 +1,6 @@
 import { useCountUp } from '../hooks.js'
 import { IconUpload } from './Icons.jsx'
-import ShotAnimation from './ShotAnimation.jsx'
+import HeroVideo from './HeroVideo.jsx'
 
 const STATUS = {
   ok: ['dot--ok', 'Model online'],
@@ -52,11 +52,7 @@ export default function Hero({ health, onAnalyze, onModel }) {
       </div>
 
       <div className="hero__visual clay">
-        <div className="hero__visual-head">
-          <span className="overline overline--muted">Live demo</span>
-          <span className="overline overline--muted">Side-on view</span>
-        </div>
-        <ShotAnimation />
+        <HeroVideo />
       </div>
     </section>
   )

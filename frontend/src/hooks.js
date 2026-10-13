@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 
-export const prefersReducedMotion = () =>
-  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-
 /** Adds .is-visible once the element scrolls into view (CSS handles the animation). */
 export function useReveal(options = { threshold: 0.15 }) {
   const ref = useRef(null)
@@ -30,10 +27,6 @@ export function useCountUp(target, start = true, duration = 1200) {
   const [value, setValue] = useState(0)
   useEffect(() => {
     if (!start || target == null) return
-    if (prefersReducedMotion()) {
-      setValue(target)
-      return
-    }
     let raf
     const t0 = performance.now()
     const tick = (now) => {

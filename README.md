@@ -132,6 +132,7 @@ python main.py            # every clip in test_folder/
 ```
 main.py                    analysis pipeline (video + photo) and CLI
 train_shot_classifier.py   training + honest grouped evaluation + report
+scripts/make_hero_clip.py  builds the home-page demo clip from any batting video
 backend/app.py             FastAPI server
 src/
   shot_recognizer.py       inference: key frames, crops, CNN + pose fusion
